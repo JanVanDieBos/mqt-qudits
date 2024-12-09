@@ -9,7 +9,6 @@ import numpy as np
 import tensornetwork as tn  # type: ignore[import-not-found]
 from typing_extensions import Unpack
 
-from src.constants import MAX_NUM_SHOTS
 from ...quantum_circuit.components.extensions.gate_types import GateTypes
 from ..jobs import Job, JobResult
 from .backendv2 import Backend
@@ -50,8 +49,8 @@ class TNSim(Backend):
         self.file_name = self._options.get("file_name", None)
 
         if self.noise_model is not None:
-            if self.shots < MAX_NUM_SHOTS:
-                warnings.warn(f"shots = {self.shots} > {MAX_NUM_SHOTS} (Number of shots should be >= 50)")
+            if self.shots < 50:
+                warnings.warn(f"shots = {self.shots} > 50 (Number of shots should be >= 50)")
             job.set_result(JobResult(state_vector=self.execute(circuit), counts=stochastic_simulation(self, circuit)))
         else:
             job.set_result(JobResult(state_vector=self.execute(circuit), counts=[]))

@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING
 import numpy as np
 from typing_extensions import Unpack
 
-from src.constants import MAX_NUM_SHOTS
 from ..._qudits.misim import state_vector_simulation
 from ..jobs import Job, JobResult
 from ..noise_tools import NoiseModel
@@ -47,8 +46,8 @@ class MISim(Backend):
         self.file_name = self._options.get("file_name", None)
 
         if self.noise_model is not None:
-            if self.shots < MAX_NUM_SHOTS:
-                warnings.warn(f"shots = {self.shots} > {MAX_NUM_SHOTS} (Number of shots should be >= 50)")
+            if self.shots < 50:
+                warnings.warn(f"shots = {self.shots} > 50 (Number of shots should be >= 50)")
             job.set_result(JobResult(state_vector=self.execute(circuit), counts=stochastic_simulation(self, circuit)))
         else:
             job.set_result(JobResult(state_vector=self.execute(circuit), counts=[]))
