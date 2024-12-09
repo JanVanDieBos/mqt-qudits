@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import warnings
 from typing import TYPE_CHECKING
 
 import numpy as np
 from typing_extensions import Unpack
 
+from src.constants import MAX_NUM_SHOTS
 # from pyseq.mqt_qudits_runner.sequence_runner import quantum_circuit_runner
 from ...core import LevelGraph
 from ..jobs import Job, JobResult
@@ -89,7 +91,8 @@ class Innsbruck01(Backend):
         self.file_path = self._options.get("file_path", None)
         self.file_name = self._options.get("file_name", None)
 
-        assert self.shots >= 50, "Number of shots should be above 50"
+        if self.shots < MAX_NUM_SHOTS:
+            warnings.warn(f"shots = {self.shots} > {MAX_NUM_SHOTS} (Number of shots should be >= 50)")
         self.execute(circuit)
         job.set_result(JobResult(state_vector=np.array([]), counts=self.outcome))
 
