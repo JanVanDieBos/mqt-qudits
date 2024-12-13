@@ -98,11 +98,19 @@ class Operation:
             f" levels={self._levels}, angles={self._angles})"
         )
 
+"""lass StatePrep: 
+def init(self, quantum_circuit: QuantumCircuit, state: NDArray[np.complex128], 
+not_noisy: bool = True, approx: bool = False) -> None: 
+self.circuit = quantum_circuit 
+self.state = state self.not_noisy = not_noisy 
+self.approximation = approx"""
 
 class StatePrep:
-    def __init__(self, quantum_circuit: QuantumCircuit, state: NDArray[np.complex128], approx: bool = False) -> None:
+
+    def __init__(self, quantum_circuit: QuantumCircuit, state: NDArray[np.complex128], not_noisy: bool = True, approx: bool = False) -> None:
         self.circuit = quantum_circuit
         self.state = state
+        self.not_noisy = not_noisy
         self.approximation = approx
 
     def retrieve_local_sequence(
@@ -185,9 +193,15 @@ class StatePrep:
             if abs(op.theta) > 1e-5:
                 nodes = op.get_control_nodes()
                 levels = op.get_control_levels()
+                #if op.is_z():
+                # new_circuit.rz(op.qudit, [0, 1, op.theta]).control(nodes, levels)
                 if op.is_z():
-                    new_circuit.rz(op.qudit, [0, 1, op.theta]).control(nodes, levels)
+                    rz = new_circuit.rz(op.qudit, [0, 1, op.theta]).control(nodes, levels)
+                    if self.not_noisy:
+                        rz.turn_off_noise()
                 else:
-                    new_circuit.r(op.qudit, [op.levels[0], op.levels[1], op.theta, op.phi]).control(nodes, levels)
+                    r = new_circuit.r(op.qudit, [op.levels[0], op.levels[1], op.theta, op.phi]).control(nodes, levels)
+                    if self.not_noisy:
+                        r.turn_off_noise()
 
         return new_circuit

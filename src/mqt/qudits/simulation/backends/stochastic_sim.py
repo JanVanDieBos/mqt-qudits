@@ -45,20 +45,17 @@ def stochastic_simulation(backend: Backend, circuit: QuantumCircuit) -> NDArray 
         noise_model = backend.noise_model
 
     shots: int = backend.shots
-    num_processes: int = mp.cpu_count()
     from . import MISim, TNSim
-
-    with mp.Pool(processes=num_processes) as pool:
-        if isinstance(backend, TNSim):
-            factory = NoisyCircuitFactory(noise_model, circuit)
-            args_tn = [(backend, factory) for _ in range(shots)]
-            results = pool.map(stochastic_execution_tn, args_tn)
-        elif isinstance(backend, MISim):
-            args_misim = [(backend, circuit, noise_model) for _ in range(shots)]
-            results = pool.map(stochastic_execution_mi, args_misim)
-        else:
-            msg = "Unsupported backend type"
-            raise TypeError(msg)
+    if isinstance(backend, TNSim):
+        factory = NoisyCircuitFactory(noise_model, circuit)
+        args_tn = (backend, factory)
+        results = stochastic_execution_tn(args_tn)
+    elif isinstance(backend, MISim):
+        args_misim = (backend, circuit, noise_model)
+        results = stochastic_execution_mi(args_misim)
+    else:
+        msg = "Unsupported backend type"
+        raise TypeError(msg)
 
     save_results(backend, results)
     return results
