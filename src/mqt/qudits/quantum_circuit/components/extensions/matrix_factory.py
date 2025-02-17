@@ -6,6 +6,7 @@ import typing
 from functools import reduce
 
 import numpy as np
+import scipy.sparse as sp
 
 if typing.TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -18,7 +19,11 @@ class MatrixFactory:
         self.gate: Gate = gate
         self.ids: int = identities_flag
 
-    def generate_matrix(self) -> NDArray[np.complex128]:
+    def generate_matrix(self) -> NDArray[np.complex128] | sp.csc_matrix:
+
+        if self.ids == 3:
+            return self.generate_matrix_sparse()  # Calls the sparse version
+        
         matrix = self.gate.__array__()
         if self.gate.dagger:
             matrix = matrix.conj().T
@@ -48,6 +53,61 @@ class MatrixFactory:
             matrix = MatrixFactory.wrap_in_identities(matrix, lines, circuit.dimensions)
 
         return matrix
+
+    def generate_matrix_sparse(self) -> sp.csc_matrix:
+        """Generates a sparse matrix representation of the gate using SciPy's CSC format."""
+
+        # Convert gate matrix to a sparse format (assuming gate.__array__() gives a NumPy array)
+        sparse_matrix = sp.csc_matrix(self.gate.__array__())
+
+        # Apply dagger transformation if necessary
+        if self.gate.dagger:
+            sparse_matrix = sparse_matrix.conj().T  # Sparse transpose
+
+        from mqt.qudits.quantum_circuit.components.extensions.controls import ControlData
+
+        control_info = typing.cast(typing.Optional[ControlData], self.gate.control_info["controls"])
+        lines = self.gate.reference_lines.copy()
+        circuit = self.gate.parent_circuit
+        ref_slice = list(range(min(lines), max(lines) + 1))
+        dimensions_slice = circuit.dimensions[min(lines): max(lines) + 1]
+
+        if control_info is not None:
+            controls: list[int] = control_info.indices
+            ctrl_levs: list[int] = control_info.ctrl_states
+            sparse_matrix = MatrixFactory.apply_identities_and_controls(
+                sparse_matrix, self.gate.target_qudits, dimensions_slice, ref_slice, controls, ctrl_levs
+            )
+        elif self.ids > 0:
+            sparse_matrix = MatrixFactory.apply_identities_and_controls(
+                sparse_matrix, self.gate.target_qudits, dimensions_slice, ref_slice
+            )
+
+        if self.ids >= 2:
+            sparse_matrix = self.wrap_in_sparse_identities(sparse_matrix, lines, circuit.dimensions)
+
+        return sparse_matrix
+
+    def wrap_in_sparse_identities(self, sparse_matrix: sp.csc_matrix, indices: list[int],
+                                  sizes: list[int]) -> sp.csc_matrix:
+        """Embeds a sparse matrix into a larger identity matrix using SciPy sparse operations."""
+        indices.sort()
+        if any(index >= len(sizes) for index in indices):
+            raise ValueError("Index out of range")
+
+        i = 0
+        result = sp.identity(sizes[i], format="csc", dtype=np.complex128)  # Start with sparse identity
+
+        while i < len(sizes):
+            if i == indices[0]:
+                result = sparse_matrix if i == 0 else sp.kron(result, sparse_matrix,
+                                                              format="csc")  # Use sparse Kronecker
+            elif (i < indices[0] and i != 0) or i > indices[-1]:
+                result = sp.kron(result, sp.identity(sizes[i], format="csc", dtype=np.complex128), format="csc")
+
+            i += 1
+
+        return result
 
     @classmethod
     def apply_identities_and_controls(
