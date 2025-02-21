@@ -4,32 +4,28 @@ import itertools
 import operator
 import typing
 from functools import reduce
-
+from scipy.sparse import identity, csr_matrix, kron
 import numpy as np
-import scipy.sparse as sp
 
 if typing.TYPE_CHECKING:
     from numpy.typing import NDArray
 
+    from mqt.qudits.quantum_circuit.components.extensions.controls import ControlData
     from mqt.qudits.quantum_circuit.gate import Gate
 
 
 class MatrixFactory:
-    def __init__(self, gate: Gate, identities_flag: int) -> None:
+    def __init__(self, gate: Gate, identities_flag: int, sparse: bool) -> None:
         self.gate: Gate = gate
         self.ids: int = identities_flag
+        self.sparse: bool = sparse
 
-    def generate_matrix(self) -> NDArray[np.complex128] | sp.csc_matrix:
-
-        if self.ids == 3:
-            return self.generate_matrix_sparse()  # Calls the sparse version
-        
+    def generate_matrix(self) -> NDArray[np.complex128]:
         matrix = self.gate.__array__()
         if self.gate.dagger:
             matrix = matrix.conj().T
-        from mqt.qudits.quantum_circuit.components.extensions.controls import ControlData
 
-        control_info = typing.cast(typing.Optional[ControlData], self.gate.control_info["controls"])
+        control_info = typing.cast("typing.Optional[ControlData]", self.gate.control_info["controls"])
         lines = self.gate.reference_lines.copy()
         circuit = self.gate.parent_circuit
         ref_slice = list(range(min(lines), max(lines) + 1))
@@ -42,72 +38,17 @@ class MatrixFactory:
             # control library
 
             matrix = MatrixFactory.apply_identities_and_controls(
-                matrix, self.gate.target_qudits, dimensions_slice, ref_slice, controls, ctrl_levs
+                matrix, self.gate.target_qudits, dimensions_slice, ref_slice, controls, ctrl_levs, self.sparse
             )
         elif self.ids > 0:
             matrix = MatrixFactory.apply_identities_and_controls(
-                matrix, self.gate.target_qudits, dimensions_slice, ref_slice
+                matrix, self.gate.target_qudits, dimensions_slice, ref_slice, None, None, self.sparse
             )
 
         if self.ids >= 2:
-            matrix = MatrixFactory.wrap_in_identities(matrix, lines, circuit.dimensions)
+            matrix = MatrixFactory.wrap_in_identities(matrix, lines, circuit.dimensions, self.sparse)
 
         return matrix
-
-    def generate_matrix_sparse(self) -> sp.csc_matrix:
-        """Generates a sparse matrix representation of the gate using SciPy's CSC format."""
-
-        # Convert gate matrix to a sparse format (assuming gate.__array__() gives a NumPy array)
-        sparse_matrix = sp.csc_matrix(self.gate.__array__())
-
-        # Apply dagger transformation if necessary
-        if self.gate.dagger:
-            sparse_matrix = sparse_matrix.conj().T  # Sparse transpose
-
-        from mqt.qudits.quantum_circuit.components.extensions.controls import ControlData
-
-        control_info = typing.cast(typing.Optional[ControlData], self.gate.control_info["controls"])
-        lines = self.gate.reference_lines.copy()
-        circuit = self.gate.parent_circuit
-        ref_slice = list(range(min(lines), max(lines) + 1))
-        dimensions_slice = circuit.dimensions[min(lines): max(lines) + 1]
-
-        if control_info is not None:
-            controls: list[int] = control_info.indices
-            ctrl_levs: list[int] = control_info.ctrl_states
-            sparse_matrix = MatrixFactory.apply_identities_and_controls(
-                sparse_matrix, self.gate.target_qudits, dimensions_slice, ref_slice, controls, ctrl_levs
-            )
-        elif self.ids > 0:
-            sparse_matrix = MatrixFactory.apply_identities_and_controls(
-                sparse_matrix, self.gate.target_qudits, dimensions_slice, ref_slice
-            )
-
-        if self.ids >= 2:
-            sparse_matrix = self.wrap_in_sparse_identities(sparse_matrix, lines, circuit.dimensions)
-
-        return sparse_matrix
-
-    def wrap_in_sparse_identities(self, sparse_matrix: sp.csc_matrix, indices: list[int],
-                                  sizes: list[int]) -> sp.csc_matrix:
-        """Embeds a sparse matrix into a larger identity matrix using SciPy sparse operations."""
-        indices.sort()
-        if any(index >= len(sizes) for index in indices):
-            raise ValueError("Index out of range")
-
-        i = 0
-        result = sp.identity(sizes[i], format="csc", dtype=np.complex128)  # Start with sparse identity
-
-        while i < len(sizes):
-            if i == indices[0]:
-                result = sparse_matrix if i == 0 else sp.kron(result, sparse_matrix,
-                                                              format="csc")  # Use sparse Kronecker
-            elif (i < indices[0] and i != 0) or i > indices[-1]:
-                result = sp.kron(result, sp.identity(sizes[i], format="csc", dtype=np.complex128), format="csc")
-
-            i += 1
-
-        return result
 
     @classmethod
     def apply_identities_and_controls(
@@ -118,7 +59,9 @@ class MatrixFactory:
         ref_lines: list[int],
         controls: list[int] | None = None,
         controls_levels: list[int] | None = None,
+        sparsity_flag: bool | None = None
     ) -> NDArray[np.complex128]:
+        matrix = csr_matrix(matrix)
         # dimensions = list(reversed(dimensions))
         # Convert qudits_applied and dimensions to lists if they are not already
         qudits_applied = [qudits_applied] if isinstance(qudits_applied, int) else qudits_applied
@@ -131,7 +74,10 @@ class MatrixFactory:
             msg = "Dimensions cannot be an empty list"
             raise ValueError(msg)
         if len(qudits_applied) == len(ref_lines) and controls is None:
-            return matrix
+            if sparsity_flag:
+                return matrix
+            else:
+                return matrix.toarray()
 
         if controls is not None:
             slide_controls = [q - min(ref_lines) for q in controls]
@@ -154,10 +100,13 @@ class MatrixFactory:
         global_states_space = [list(element) for element in itertools.product(*global_single_site_logics)]
         global_index_to_state = dict(enumerate(global_states_space))
 
-        result = np.identity(reduce(operator.mul, dimensions, 1), dtype="complex")
+        shape = reduce(operator.mul, dimensions, 1)
+        result = identity(shape, dtype=np.complex128, format='csr')
+        result = result.tolil()
+        # result = np.identity(reduce(operator.mul, dimensions, 1), dtype="complex")
 
-        for r in range(result.shape[0]):
-            for c in range(result.shape[1]):
+        for r in range(shape):
+            for c in range(shape):
                 if controls is not None:
                     extract_r = operator.itemgetter(*slide_controls)(global_index_to_state[r])
                     extract_c = operator.itemgetter(*slide_controls)(global_index_to_state[c])
@@ -198,28 +147,37 @@ class MatrixFactory:
                     value = matrix[matrix_row, matrix_col]
                     result[r, c] = value
 
-        return result
+        if sparsity_flag:
+            result = result.tocsr()
+            return result
+        else:
+            return result.toarray()
 
     @classmethod
     def wrap_in_identities(
-        cls, matrix: NDArray[np.complex128], indices: list[int], sizes: list[int]
+        cls, matrix: NDArray[np.complex128], indices: list[int], sizes: list[int], sparsity_flag: bool
     ) -> NDArray[np.complex128]:
+        matrix = csr_matrix(matrix)
         indices.sort()
         if any(index >= len(sizes) for index in indices):
             msg = "Index out of range"
             raise ValueError(msg)
 
         i = 0
-        result = np.identity(sizes[i])
+        result = identity(sizes[i], dtype=np.complex128, format='csr')
         while i < len(sizes):
             if i == indices[0]:
-                result = matrix if i == 0 else np.kron(result, matrix)
+                result = matrix if i == 0 else kron(result, matrix)
             elif (i < indices[0] and i != 0) or i > indices[-1]:
-                result = np.kron(result, np.identity(sizes[i]))
+                result = kron(result, identity(sizes[i], dtype=np.complex128, format='csr'))
 
             i += 1
+        if sparsity_flag:
+            final_result = csr_matrix(result)
+        else:
+            final_result = result.toarray()
 
-        return result
+        return final_result
 
 
 def from_dirac_to_basis(vec: list[int], d: list[int] | int) -> NDArray[np.complex128]:
