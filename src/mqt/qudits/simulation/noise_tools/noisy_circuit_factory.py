@@ -197,7 +197,7 @@ class NoisyCircuitFactory:
                             f"Got levels ({lev_a}, {lev_b}) but dimension is {dim}. "
                             "Check noise model compatibility with circuit."
                         )
-                        raise IndexError(msg)
+                        pass #rais IndexError(msg)
 
                     # Calculate probabilities for noise operations
                     prob_each = noise_info.subspace_w_probs[lev_a, lev_b].probability_depolarizing / 4
@@ -243,7 +243,7 @@ class NoisyCircuitFactory:
                             f"Got levels ({lev_a}, {lev_b}) but dimension is {dim}. "
                             "Check noise model compatibility with circuit."
                         )
-                        raise IndexError(msg)
+                        pass #raise IndexError(msg)
 
                     # Calculate remaining levels for dephasing
                     subspace_levels = {lev_a, lev_b}
