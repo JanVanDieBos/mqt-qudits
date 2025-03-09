@@ -222,7 +222,7 @@ class NoisyCircuitFactory:
     ) -> None:
         """Applies dephasing noise to specified qudit levels outside the main depolarizing subspace levels.
 
-        Args:
+        Args:f
             noisy_circuit: Circuit to apply noise to
             qudits: List of qudits to apply noise to
             noise_info: Noise model information containing subspace probabilities
