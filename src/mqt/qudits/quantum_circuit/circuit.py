@@ -11,6 +11,7 @@ from .components import ClassicRegister, QuantumRegister
 from .gates import (
     LS,
     MS,
+    Rzz,
     CEx,
     CSum,
     CustomMulti,
@@ -77,6 +78,7 @@ class QuantumCircuit:
         "h": "h",
         "ls": "ls",
         "ms": "ms",
+        "rzz": "rzz",
         "pm": "pm",
         "rxy": "r",
         "rh": "rh",
@@ -108,8 +110,8 @@ class QuantumCircuit:
         if len(args) > 1:
             # case 1
             # num_qudits: int, dimensions_slice: List[int]|None, numcl: int
-            num_qudits: int = cast(int, args[0])
-            dims: list[int] = cast(list[int], num_qudits * [2] if args[1] is None else args[1])
+            num_qudits: int = cast("int", args[0])
+            dims: list[int] = cast("list[int]", num_qudits * [2] if args[1] is None else args[1])
             self.append(QuantumRegister("q", num_qudits, dims))
             # self.num_cl = args[2]
         elif isinstance(args[0], QuantumRegister):
@@ -120,7 +122,7 @@ class QuantumCircuit:
 
     @classmethod
     def get_qasm_set(cls) -> dict[str, str]:
-        return cast(dict[str, str], cls.qasm_to_gate_set_dict)
+        return cast("dict[str, str]", cls.qasm_to_gate_set_dict)
 
     @property
     def dimensions(self) -> list[int]:
@@ -246,6 +248,17 @@ class QuantumCircuit:
         return MS(
             self,
             "MS" + str([self.dimensions[i] for i in qudits]),
+            qudits,
+            parameters,
+            [self.dimensions[i] for i in qudits],
+            None,
+        )
+
+    @add_gate_decorator
+    def rzz(self, qudits: list[int], parameters: list[float]) -> Rzz:
+        return Rzz(
+            self,
+            "RZZ" + str([self.dimensions[i] for i in qudits]),
             qudits,
             parameters,
             [self.dimensions[i] for i in qudits],
